@@ -1,11 +1,12 @@
 class Environment:
 
     def __init__(self):
-        self.steps = 10  # iteraciones
+        self.steps = 50  # iteraciones
         self.project_board()
         self.agent = (4, 1)  # agent position (row, col) — starts at 'S'
         self.goal = (1, 7)   # goal position (row, col) — the 'E' cell
         self.carrying = None  # item the agent is physically holding (e.g. 'K')
+        self.picked_up = set()  # items already collected (prevents re-pickup)
 
     def project_board(self):
         self.board = [
@@ -30,6 +31,20 @@ class Environment:
         if cell == 'D':          # door blocks movement unless agent has the key
             return self.carrying == 'K'
         return True
+
+    def get_state(self):
+        """Return composite state: (position, carrying).
+        This is needed so the Q-table captures that optimal actions
+        differ depending on whether the agent holds an item."""
+        return (self.agent, self.carrying)
+
+    def reset(self):
+        """Reset the environment for a new episode."""
+        self.steps = 50
+        self.project_board()
+        self.agent = (4, 1)
+        self.carrying = None
+        self.picked_up = set()
 
     def is_done(self):
         """The episode ends when the agent reaches the goal or runs out of steps."""
@@ -59,12 +74,12 @@ class Environment:
                 if self._cell_is_passable(nr, nc):
                     actions.append(direction)
 
-        # Recoger objetos (Llave = 'K' ; Bola = 'B')
+        # Recoger objetos (Llave = 'K' ; Bola = 'B') — solo si no se ha recogido antes
         cell = self.board[state[0]][state[1]]
-        if cell in ('K', 'B') and self.carrying is None:
+        if cell in ('K', 'B') and self.carrying is None and cell not in self.picked_up:
             actions.append('pickup')
 
-        # El agente puede soltar lo que lleva (solo en casillas vacías)
+        # El agente puede soltar lo que lleva (solo en casillas vacias)
         if self.carrying is not None and cell == ' ':
             actions.append('drop')
 
@@ -109,20 +124,22 @@ class Environment:
         # recoger objeto 
         elif action == 'pickup':
             cell = self.board[row][col]
-            if cell == 'K':
+            if cell == 'K' and cell not in self.picked_up:
                 reward += 30
                 self.carrying = cell
                 self.board[row][col] = ' '
-            elif cell == 'B':
+                self.picked_up.add('K')
+            elif cell == 'B' and cell not in self.picked_up:
                 reward += 10
                 self.carrying = cell
                 self.board[row][col] = ' '
+                self.picked_up.add('B')
             
 
         # soltar objeto 
         elif action == 'drop':
             if self.carrying is not None and self.board[row][col] == ' ':
-                reward += 20
+                reward += 0   # no bonus for dropping (prevents pickup/drop loop)
                 self.board[row][col] = self.carrying
                 self.carrying = None
 
